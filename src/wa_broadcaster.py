@@ -18,6 +18,40 @@ class WhatsAppOrchestrator:
         self.messenger = WhatsAppMessenger(self.config['chrome_user_data'])
         self.message = self._load_message()
 
+        # Media settings
+        self.send_as_media = self.config.get('send_as_media', False)
+        self.media_file = self.config.get('media_file', None)
+
+        # Validate media configuration if enabled
+        if self.send_as_media:
+            if not self.media_file:
+                print("ERROR: send_as_media is true but media_file not specified in config.json")
+                sys.exit(1)
+
+            if not os.path.exists(self.media_file):
+                print(f"ERROR: Media file not found: {self.media_file}")
+                print("Please check:")
+                print("  1. File path is correct in config.json")
+                print("  2. File exists at the specified location")
+                sys.exit(1)
+
+            # Check file size (WhatsApp typically limits to 64MB)
+            file_size_mb = os.path.getsize(self.media_file) / (1024 * 1024)
+            if file_size_mb > 64:
+                print(f"ERROR: Media file too large: {file_size_mb:.2f}MB (max 64MB)")
+                sys.exit(1)
+
+            # Check file extension
+            ext = os.path.splitext(self.media_file)[1].lower()
+            allowed_exts = ['.jpg', '.jpeg', '.png', '.gif', '.mp4', '.mov', '.3gp', '.pdf', '.docx', '.doc', '.txt', '.xlsx']
+            if ext not in allowed_exts:
+                print(f"ERROR: Unsupported media format: {ext}")
+                print(f"Allowed formats: {', '.join(allowed_exts)}")
+                sys.exit(1)
+
+            print(f"✓ Media file validated: {self.media_file} ({file_size_mb:.2f}MB)")
+            print(f"✓ Media mode enabled - will send media with caption")
+
     def _load_config(self, path):
         with open(path) as f:
             return json.load(f)
@@ -69,13 +103,25 @@ class WhatsAppOrchestrator:
 
         message_to_send = self.message.replace("<nick_name>", nick_name)
         print('Message Preview:', message_to_send)
-        result = self.messenger.send_exact_message(ph_num, message_to_send)
+
+        # Send test message (with or without media)
+        if self.send_as_media:
+            result = self.messenger.send_media_with_caption(ph_num, self.media_file, message_to_send)
+        else:
+            result = self.messenger.send_exact_message(ph_num, message_to_send)
 
         print('Verify the message sent to your phone number and confirm.')
         print('Also check if your config file is correct.')
         response = input('Input "Yes" if message is fine, else input "No" to cancel: ')
-        if response.upper() != 'YES':
+        if response.strip().upper() != 'YES':
+            print(f'Cancelled by user (response: {response})')
             sys.exit(-1)
+
+        print(f'\n✓ Test message confirmed! Starting bulk send...')
+        print(f'Total contacts loaded: {len(contacts)}')
+        print(f'Excluded numbers: {len(excluded)}')
+        print(f'Already sent: {len(sent)}')
+        print(f'Will process: {len([n for n, num, nn in contacts if normalize_phone(num) not in excluded and normalize_phone(num) not in sent])} messages\n')
 
         for name, number, nick_name in contacts:
             if normalize_phone(number) in excluded:
@@ -89,7 +135,13 @@ class WhatsAppOrchestrator:
             try:
                 # Replace <nick_name> placeholder with actual nick_name
                 message_to_send = self.message.replace("<nick_name>", nick_name)
-                result = self.messenger.send_exact_message(number, message_to_send)
+
+                # Send message (with or without media)
+                if self.send_as_media:
+                    result = self.messenger.send_media_with_caption(number, self.media_file, message_to_send)
+                else:
+                    result = self.messenger.send_exact_message(number, message_to_send)
+
                 if result is True:
                     self.tracker.record_success(name, number)
                     self._check_timeout()
