@@ -3,9 +3,6 @@ import os
 import sys
 from pathlib import Path
 
-from lib import normalize_phone
-
-
 class WhatsAppTracker:
     def __init__(self, config):
         self.config = config
@@ -54,13 +51,13 @@ class WhatsAppTracker:
     def get_excluded_numbers(self):
         try:
             with open(self.config['exclude_file'], 'r') as f:
-                return {normalize_phone(line.strip()) for line in f if line.strip()}
+                return {line.strip() for line in f if line.strip()}
         except FileNotFoundError:
             return set()
 
     def get_already_sent(self):
         try:
             with open(self.config['sent_numbers_file'], 'r') as f:
-                return {normalize_phone(line.strip()) for line in f if line.strip()}
+                return {line.strip() for line in f if line.strip()}
         except FileNotFoundError:
             return set()

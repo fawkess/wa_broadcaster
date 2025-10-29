@@ -11,7 +11,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-from lib import random_sleep, format_phone_for_whatsapp
+from lib import random_sleep
 
 # Define OS-specific paste shortcut
 PASTE_SHORTCUT = Keys.COMMAND + 'v' if platform.system() == 'Darwin' else Keys.CONTROL + 'v'
@@ -54,14 +54,12 @@ class WhatsAppMessenger:
     def send_message(self, number, message):
         """Returns True if message sent, False if failed"""
         try:
-            # Format number with country code
-            formatted_number = format_phone_for_whatsapp(number)
-            if not formatted_number:
-                return False  # Invalid number format
-
+            # Force fresh load with cache busting
+            #message = f'sending message to {number}'
+            number = '9964297517'
             # Process non-BMP chars
             safe_content = message.encode('utf-16', 'surrogatepass').decode('utf-16')
-            chat_url = f"https://web.whatsapp.com/send?phone={formatted_number}"
+            chat_url = f"https://web.whatsapp.com/send?phone={number}"
             self.driver.get(chat_url)
 
             # Main sending attempt (15 sec max)
@@ -100,55 +98,19 @@ class WhatsAppMessenger:
             pass  # Even quit won't break
 
     def send_exact_message(self, number, message):
-        """Guaranteed delivery of exact message content
-        Returns: True on success, error string on failure
-        """
+        """Guaranteed delivery of exact message content"""
         try:
-            # Format number with country code (normalize + validate + add country code)
-            formatted_number = format_phone_for_whatsapp(number)
-            if not formatted_number:
-                return f"Invalid phone number format: {number}"
-
+            # number = '9964297517'
             # Load blank chat
-            self.driver.get(f"https://web.whatsapp.com/send?phone={formatted_number}")
+            self.driver.get(f"https://web.whatsapp.com/send?phone={number}")
             #time.sleep(3)
-
-            # Check for invalid number alert
-            try:
-                WebDriverWait(self.driver, 3).until(
-                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Phone number shared via url is invalid')]"))
-                )
-                return "Invalid WhatsApp number"
-            except:
-                pass  # No invalid number alert, continue
-
-            # Check for rate limiting / spam warnings
-            page_text = self.driver.page_source.lower()
-            rate_limit_keywords = [
-                "too many messages",
-                "slow down",
-                "you're sending messages too quickly",
-                "temporarily banned",
-                "account restricted",
-                "detected automated",
-                "unusual activity"
-            ]
-            for keyword in rate_limit_keywords:
-                if keyword in page_text:
-                    return f"RATE LIMIT DETECTED: {keyword}"
 
             # Method 1: Clipboard injection (most reliable)
             pyperclip.copy(message)
-            try:
-                input_box = WebDriverWait(self.driver, 30).until(
-                    EC.element_to_be_clickable(
-                        (By.XPATH, '//div[@contenteditable="true"][@data-tab="10"]'))
-                )
-            except Exception as e:
-                # Check if session expired
-                if "scan" in self.driver.page_source.lower() or "qr" in self.driver.page_source.lower():
-                    return "Session expired - QR scan required"
-                return "Timeout waiting for chat to load (30s)"
+            input_box = WebDriverWait(self.driver, 30).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, '//div[@contenteditable="true"][@data-tab="10"]'))
+            )
 
             # Paste using both COMMAND and CONTROL for cross-platform
             input_box.send_keys(PASTE_SHORTCUT)
@@ -169,13 +131,5 @@ class WhatsAppMessenger:
             input_box.send_keys(Keys.ENTER)
             return True
 
-        except Exception as e:
-            error_msg = str(e)
-            if "clipboard" in error_msg.lower():
-                return "Clipboard access failed"
-            elif "element" in error_msg.lower():
-                return "WhatsApp UI element not found"
-            elif "timeout" in error_msg.lower():
-                return "Page load timeout"
-            else:
-                return f"Unknown error: {error_msg[:50]}"
+        except Exception:
+            return False
